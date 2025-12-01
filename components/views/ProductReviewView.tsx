@@ -17,12 +17,10 @@ import { handleApiError } from '../../services/errorHandler';
 import { editOrComposeWithImagen } from '../../services/imagenV3Service';
 import CreativeDirectionPanel from '../common/CreativeDirectionPanel';
 import { getInitialCreativeDirectionState, type CreativeDirectionState } from '../../services/creativeDirectionService';
+import { UI_SERVER_LIST } from '../../services/serverConfig';
 
 // --- CONFIG FOR PARALLEL GENERATION ---
-const SERVERS = Array.from({ length: 10 }, (_, i) => ({
-    id: `s${i + 1}`,
-    url: `https://s${i + 1}.monoklix.com`
-}));
+const SERVERS = UI_SERVER_LIST;
 
 const contentTypeOptions = ["None", "Random", "Hard Selling", "Soft Selling", "Storytelling", "Problem/Solution", "ASMR / Sensory", "Unboxing", "Educational", "Testimonial"];
 const languages = ["English", "Bahasa Malaysia", "Chinese"];

@@ -13,12 +13,10 @@ import { getTranslations } from '../../services/translations';
 import TwoColumnLayout from '../common/TwoColumnLayout';
 import CreativeDirectionPanel from '../common/CreativeDirectionPanel';
 import { getInitialCreativeDirectionState, type CreativeDirectionState } from '../../services/creativeDirectionService';
+import { UI_SERVER_LIST } from '../../services/serverConfig';
 
 // --- CONFIG FOR PARALLEL GENERATION ---
-const SERVERS = Array.from({ length: 10 }, (_, i) => ({
-    id: `s${i + 1}`,
-    url: `https://s${i + 1}.monoklix.com`
-}));
+const SERVERS = UI_SERVER_LIST;
 
 const CreativeButton: React.FC<{
   label: string;
@@ -398,7 +396,7 @@ const TiktokAffiliateView: React.FC<TiktokAffiliateViewProps> = ({ onReEdit, onC
                             return (
                                 <div className="text-center text-red-500 dark:text-red-400 p-4">
                                     <AlertTriangleIcon className="w-12 h-12 mx-auto mb-4" />
-                                    <p className="font-semibold">Generation Failed - Please Check Image & Prompt.</p>
+                                    <p className="font-semibold">Generation Failed - Try Again @ Check Console Log.</p>
                                     <p className="text-sm mt-2 max-w-md mx-auto text-neutral-500 dark:text-neutral-400">All attempts failed. Please try again.</p>
                                     <button
                                         onClick={() => handleRetry(selectedImageIndex)}

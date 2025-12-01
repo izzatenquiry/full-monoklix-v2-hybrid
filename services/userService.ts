@@ -5,6 +5,7 @@ import { MODELS } from './aiConfig';
 import { APP_VERSION } from './appConfig';
 import { v4 as uuidv4 } from 'uuid';
 import { getProxyServers } from './contentService';
+import { PROXY_SERVER_URLS } from './serverConfig';
 
 // FIX: Correctly reference the 'users' table as defined in the Supabase types.
 type UserProfileData = Database['public']['Tables']['users']['Row'];
@@ -677,15 +678,17 @@ export const saveUserApiKey = async (userId: string, apiKey: string): Promise<{ 
     return { success: true, user: updatedProfile };
 };
 
-// FIX: Moved getAvailableServersForUser from App.tsx to here to resolve circular dependency.
 export const getAvailableServersForUser = async (user: User): Promise<string[]> => {
+    // Admin gets dynamic list from DB if possible
     if (user.role === 'admin') {
-        return await getProxyServers();
+        const dynamicList = await getProxyServers();
+        // If DB fetch works, return it, otherwise fallback to static constant
+        if (dynamicList && dynamicList.length > 0) {
+            return dynamicList;
+        }
     }
-    if (user.batch_02 === 'batch_02') {
-        return ['https://s6.monoklix.com', 'https://s7.monoklix.com', 'https://s8.monoklix.com', 'https://s9.monoklix.com'];
-    }
-    return ['https://s1.monoklix.com', 'https://s2.monoklix.com', 'https://s3.monoklix.com', 'https://s4.monoklix.com', 'https://s5.monoklix.com'];
+    // All regular users and admin fallback use the centralized static list
+    return PROXY_SERVER_URLS;
 };
 
 export const incrementImageUsage = async (user: User): Promise<{ success: true; user: User } | { success: false; message: string }> => {

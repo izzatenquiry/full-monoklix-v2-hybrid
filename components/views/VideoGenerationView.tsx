@@ -618,7 +618,7 @@ const VideoGenerationView: React.FC<VideoGenerationViewProps> = ({ preset, clear
           ) : error && !videoUrl ? ( // Only show error if there's no video to display
                <div className="text-center text-red-500 dark:text-red-400 p-4">
                    <AlertTriangleIcon className="w-12 h-12 mx-auto mb-4" />
-                   <p className="font-semibold">Generation Failed - Please Check Image & Prompt.</p>
+                   <p className="font-semibold">Generation Failed - Try Again @ Check Console Log.</p>
                    <p className="text-sm mt-2 max-w-md mx-auto text-neutral-500 dark:text-neutral-400">Please check the console for details.</p>
                    <button
                        onClick={handleGenerate}

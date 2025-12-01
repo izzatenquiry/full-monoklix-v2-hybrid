@@ -88,13 +88,13 @@ export const handleApiError = (error: unknown): string => {
     // --- End Error Code Detection ---
 
     switch(errorCode) {
-        case '400_SAFETY': return 'safetyBlock - Change Image @ Prompt';
-        case '400': return 'badRequest - Change Image @ Prompt';
+        case '400_SAFETY': return 'safetyBlock - Check Console';
+        case '400': return 'badRequest - Check Console';
         case '403':
-        case '401': return 'permissionDenied';
-        case '500': return 'serverError - Change Server @ Claim New Token';
-        case '503': return 'GoogleUnavailable - Click Again';
-        case 'NET_RETRY': return 'networkErrorRetryFailed';
+        case '401': return 'permissionDenied - Check Console';
+        case '500': return 'serverError - Check Console';
+        case '503': return 'GoogleUnavailable - Check Console';
+        case 'NET_RETRY': return 'networkErrorRetryFailed - Check Console';
         default: {
             const firstLine = message.split('\n')[0];
 

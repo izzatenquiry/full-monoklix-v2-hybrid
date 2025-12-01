@@ -8,13 +8,10 @@ import CreativeDirectionPanel from '../common/CreativeDirectionPanel';
 import { getInitialCreativeDirectionState, type CreativeDirectionState } from '../../services/creativeDirectionService';
 import { runComprehensiveTokenTest, type TokenTestResult } from '../../services/imagenV3Service';
 import { addTokenToPool } from '../../services/userService';
+import { UI_SERVER_LIST } from '../../services/serverConfig';
 
 // --- CONFIG ---
-const SERVERS = Array.from({ length: 10 }, (_, i) => ({
-    id: `s${i + 1}`,
-    name: `Server S${i + 1}`,
-    url: `https://s${i + 1}.monoklix.com`
-}));
+const SERVERS = UI_SERVER_LIST;
 
 type TestType = 'T2I' | 'I2I' | 'I2V';
 type Status = 'idle' | 'uploading' | 'running' | 'success' | 'failed';
@@ -434,7 +431,7 @@ const MasterDashboardView: React.FC<MasterDashboardViewProps> = ({ currentUser, 
                     })
                 });
                 const genData = await safeJson(genRes);
-                if (!genRes.ok) throw new Error(genData.error?.message || 'Generation failed - Please Check Image & Prompt.');
+                if (!genRes.ok) throw new Error(genData.error?.message || 'Generation failed - Try Again @ Check Console Log.');
                 let operations = genData.operations;
                 if (!operations || operations.length === 0) throw new Error('No operations returned');
                 

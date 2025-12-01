@@ -1,14 +1,10 @@
 import { addLogEntry } from './aiLogService';
 import { type User } from '../types';
 import { supabase } from './supabaseClient';
+import { PROXY_SERVER_URLS } from './serverConfig';
 
-// Default fallback servers if session is empty
-const FALLBACK_SERVERS = [
-    'https://s1.monoklix.com', 'https://s2.monoklix.com', 'https://s3.monoklix.com',
-    'https://s4.monoklix.com', 'https://s5.monoklix.com', 'https://s6.monoklix.com',
-    'https://s7.monoklix.com', 'https://s8.monoklix.com', 'https://s9.monoklix.com',
-    'https://s10.monoklix.com'
-];
+// Default fallback servers from config
+const FALLBACK_SERVERS = PROXY_SERVER_URLS;
 
 export const getVeoProxyUrl = (): string => {
   if (window.location.hostname === 'localhost') {

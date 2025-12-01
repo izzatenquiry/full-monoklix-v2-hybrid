@@ -23,7 +23,7 @@ const getTabs = (): Tab<SettingsTabId>[] => {
     const T = getTranslations().settingsView;
     return [
         { id: 'profile', label: T.tabs.profile },
-        { id: 'api', label: T.tabs.api },
+        { id: 'api', label: T.tabs.api, adminOnly: true },
         { id: 'content-admin', label: T.tabs.contentAdmin, adminOnly: true },
         { id: 'user-db', label: T.tabs.userDb, adminOnly: true },
     ];
@@ -679,7 +679,7 @@ const ApiIntegrationsPanel: React.FC<ApiIntegrationsPanelProps> = ({ currentUser
                         <h2 className="text-xl font-semibold mb-2">{T.authTokenTitle}</h2>
                         <div className="p-4 bg-neutral-100 dark:bg-neutral-800 rounded-lg mb-4">
                             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                Hybrid Mode Active: Your token is prioritized. If it fails, the system auto-switches to the Shared Pool.
+                                {T.hybridModeDesc}
                             </p>
                         </div>
                         <div className="relative">

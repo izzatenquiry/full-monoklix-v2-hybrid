@@ -475,7 +475,7 @@ const ApiKeyStatus: React.FC<ApiKeyStatusProps> = ({ activeApiKey, currentUser, 
                             </button>
                         </div>
                          <a
-                            href="https://t.me/Monoklix_Bot"
+                            href="https://t.me/+5nMdmDbyBxFkMjc1"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="w-full flex items-center justify-center gap-2 bg-sky-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-sky-600 transition-colors text-sm mt-3"

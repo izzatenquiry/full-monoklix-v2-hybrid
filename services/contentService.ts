@@ -2,6 +2,7 @@ import { type TutorialContent, type PlatformStatus, type Announcement, type Vira
 import { saveData, loadData } from './indexedDBService';
 import { supabase } from './supabaseClient';
 import { MODELS } from './aiConfig';
+import { PROXY_SERVER_URLS } from './serverConfig';
 
 const TUTORIAL_CONTENT_KEY = 'monoklix-ai-tutorial-content';
 const PLATFORM_STATUS_KEY = 'monoklix-ai-platform-status';
@@ -147,22 +148,13 @@ export const getProxyServers = async (): Promise<string[]> => {
 
     if (error) {
         console.error("Error fetching proxy servers, falling back to default:", error.message);
-        // Fallback to a default list to prevent total app failure.
-        // The admin will see the error in the console.
-        return [
-            'https://s1.monoklix.com', 'https://s2.monoklix.com', 'https://s3.monoklix.com',
-            'https://s4.monoklix.com', 'https://s5.monoklix.com', 'https://s6.monoklix.com',
-            'https://s7.monoklix.com', 'https://s8.monoklix.com', 'https://s9.monoklix.com'
-        ]; 
+        // Fallback to the default list from config
+        return PROXY_SERVER_URLS; 
     }
 
     if (!data || data.length === 0) {
         console.warn("No active proxy servers found in the database, falling back to default.");
-        return [
-            'https://s1.monoklix.com', 'https://s2.monoklix.com', 'https://s3.monoklix.com',
-            'https://s4.monoklix.com', 'https://s5.monoklix.com', 'https://s6.monoklix.com',
-            'https://s7.monoklix.com', 'https://s8.monoklix.com', 'https://s9.monoklix.com'
-        ];
+        return PROXY_SERVER_URLS;
     }
 
     return data.map(server => server.url);
