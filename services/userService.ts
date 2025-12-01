@@ -502,7 +502,7 @@ export const logActivity = async (
 
     if (!user) {
         // Fail silently if no user. We don't want to block user actions for logging.
-        console.warn('Could not log activity: user not found.');
+        // console.warn('Could not log activity: user not found.');
         return;
     }
 
@@ -525,10 +525,12 @@ export const logActivity = async (
             .insert(logData);
         
         if (error) {
-            console.error('Failed to log activity to Supabase:', error.message);
+            // Silenced logs per user request
+            // console.error('Failed to log activity to Supabase:', error.message);
         }
     } catch (e) {
-        console.error('Exception during activity logging:', e);
+        // Silenced logs per user request
+        // console.error('Exception during activity logging:', e);
     }
 };
 
@@ -771,11 +773,12 @@ export const updateUserLastSeen = async (userId: string): Promise<void> => {
             .eq('id', userId);
         
         if (error) {
-            // This is a background task, so we just log the error without throwing
-            console.warn('Failed to update last_seen_at:', getErrorMessage(error));
+            // Silenced logs per user request
+            // console.warn('Failed to update last_seen_at:', getErrorMessage(error));
         }
     } catch (error) {
-        console.error('Exception while updating last_seen_at:', getErrorMessage(error));
+        // Silenced logs per user request
+        // console.error('Exception while updating last_seen_at:', getErrorMessage(error));
     }
 };
 
