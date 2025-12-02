@@ -11,6 +11,7 @@ import eventBus from "./eventBus";
 import { type User } from '../types';
 import { getImagenProxyUrl, getVeoProxyUrl } from './apiClient';
 import { generateImageWithImagen } from "./imagenV3Service";
+import { PROXY_SERVER_URLS } from './serverConfig';
 
 
 const getActiveApiKey = (): string | null => {
@@ -159,10 +160,179 @@ export const streamChatResponse = async (chat: Chat, prompt: string) => {
     }
 };
 
+// Helper to get a random token from pool, excluding specific ones
+const getRandomToken = (excludeTokens: string[] = []): string | null => {
+    try {
+        const tokensJSON = sessionStorage.getItem('veoAuthTokens');
+        if (tokensJSON) {
+            const sharedTokens: { token: string }[] = JSON.parse(tokensJSON);
+            // Filter out excluded tokens
+            const candidates = sharedTokens.filter(t => !excludeTokens.includes(t.token));
+            
+            if (candidates.length > 0) {
+                const randomIndex = Math.floor(Math.random() * candidates.length);
+                return candidates[randomIndex].token;
+            } else if (sharedTokens.length > 0) {
+                 // If all are excluded (rare), just pick any random one
+                 const randomIndex = Math.floor(Math.random() * sharedTokens.length);
+                 return sharedTokens[randomIndex].token;
+            }
+        }
+    } catch (e) {
+        console.warn("Could not pick random token", e);
+    }
+    return null;
+};
+
+// Helper to get a random server from pool
+const getRandomServer = (): string => {
+    if (PROXY_SERVER_URLS.length > 0) {
+        return PROXY_SERVER_URLS[Math.floor(Math.random() * PROXY_SERVER_URLS.length)];
+    }
+    return 'https://s1.monoklix.com'; // Fallback
+};
+
+/**
+ * Internal helper to execute a single video generation cycle.
+ */
+const attemptVideoGeneration = async (
+    prompt: string,
+    model: string,
+    aspectRatio: string,
+    resolution: string,
+    image: { imageBytes: string, mimeType: string } | undefined,
+    token: string | undefined,
+    serverUrl: string | undefined,
+    onStatusUpdate?: (status: string) => void
+): Promise<{ videoFile: File; thumbnailUrl: string | null; }> => {
+
+    // --- STEP 1: PREPARE IMAGE ---
+    let processedImage = image;
+    if (image) {
+        try {
+            const targetRatio = (aspectRatio === '16:9' || aspectRatio === '9:16') ? aspectRatio : '9:16';
+            // Note: Logging cropping only if verbose needed, kept silent here for clean retry logs
+            const croppedBase64 = await cropImageToAspectRatio(image.imageBytes, targetRatio);
+            processedImage = { ...image, imageBytes: croppedBase64 };
+        } catch (cropError) {
+            console.error("Image processing failed, proceeding with original image.", cropError);
+        }
+    }
+
+    const veo3AspectRatio = (ar: string): 'landscape' | 'portrait' => {
+        if (ar === '9:16' || ar === '3:4') return 'portrait';
+        return 'landscape';
+    };
+    const aspectRatioForVeo3 = veo3AspectRatio(aspectRatio);
+
+    let imageMediaId: string | undefined = undefined;
+    let successfulToken: string | null = null;
+    
+    // --- STEP 2: UPLOAD (If needed) ---
+    if (processedImage) {
+        if (onStatusUpdate) onStatusUpdate('Uploading reference image...');
+        
+        // STRICTLY use the provided token and server
+        const uploadResult = await uploadImageForVeo3(
+            processedImage.imageBytes, 
+            processedImage.mimeType, 
+            aspectRatioForVeo3, 
+            onStatusUpdate,
+            token,
+            serverUrl
+        );
+        imageMediaId = uploadResult.mediaId;
+        successfulToken = uploadResult.successfulToken;
+    } else {
+        successfulToken = token || null;
+    }
+
+    const useStandardModel = !model.includes('fast');
+    if (onStatusUpdate) onStatusUpdate('Initializing generation...');
+    
+    // --- STEP 3: GENERATE REQUEST ---
+    // STRICTLY use the token from upload (or provided) and the provided server
+    const { operations: initialOperations, successfulToken: generationToken } = await generateVideoWithVeo3({
+        prompt,
+        imageMediaId,
+        config: {
+            aspectRatio: aspectRatioForVeo3,
+            useStandardModel,
+            authToken: successfulToken || undefined, 
+            serverUrl: serverUrl
+        },
+    }, onStatusUpdate);
+
+    const videoCreationToken = generationToken;
+
+    if (!initialOperations || initialOperations.length === 0) {
+        throw new Error("Video generation failed to start. The API did not return any operations.");
+    }
+
+    // --- STEP 4: POLL STATUS ---
+    let finalOperations: any[] = initialOperations;
+    let finalUrl: string | null = null;
+    let thumbnailUrl: string | null = null;
+    const POLL_INTERVAL = 10000;
+
+    while (!finalUrl) {
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+
+        // Check status using the SAME token that started the generation
+        const statusResponse = await checkVideoStatus(finalOperations, videoCreationToken, onStatusUpdate);
+        if (!statusResponse?.operations || statusResponse.operations.length === 0) {
+            console.warn('⚠️ Empty status response, retrying...');
+            continue;
+        }
+
+        finalOperations = statusResponse.operations;
+        const opStatus = finalOperations[0];
+        
+        if (opStatus.status === 'MEDIA_GENERATION_STATUS_FAILED') {
+            throw new Error("Video generation failed on the server (MEDIA_GENERATION_STATUS_FAILED).");
+        }
+
+        const isCompleted = opStatus.done === true || ['MEDIA_GENERATION_STATUS_COMPLETED', 'MEDIA_GENERATION_STATUS_SUCCESS', 'MEDIA_GENERATION_STATUS_SUCCESSFUL'].includes(opStatus.status);
+
+        if (isCompleted) {
+            finalUrl = opStatus.operation?.metadata?.video?.fifeUrl
+                    || opStatus.metadata?.video?.fifeUrl
+                    || opStatus.result?.generatedVideo?.[0]?.fifeUrl
+                    || opStatus.result?.generatedVideos?.[0]?.fifeUrl
+                    || opStatus.video?.fifeUrl
+                    || opStatus.fifeUrl;
+            
+            thumbnailUrl = opStatus.operation?.metadata?.video?.servingBaseUri
+                        || opStatus.metadata?.video?.servingBaseUri
+                        || null;
+            
+            if (!finalUrl) {
+                throw new Error("Video finished but no output URL found (Safety Block likely).");
+            }
+        } else if (opStatus.error) {
+            throw new Error(`Video generation failed: ${opStatus.error.message || opStatus.error.code || 'Unknown error'}`);
+        }
+    }
+    
+    // --- STEP 5: DOWNLOAD ---
+    // We use the *same* server for download proxying to maintain session stickiness if needed (though download is usually just CORS proxy)
+    const PROXY_URL = serverUrl || getVeoProxyUrl(); 
+    if (onStatusUpdate) onStatusUpdate('Finalizing video...');
+    const proxyDownloadUrl = `${PROXY_URL}/api/veo/download-video?url=${encodeURIComponent(finalUrl)}`;
+
+    const response = await fetch(proxyDownloadUrl);
+    if (!response.ok) {
+        throw new Error(`Background download failed with status: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const videoFile = new File([blob], `monoklix-veo3-${Date.now()}.mp4`, { type: 'video/mp4' });
+
+    return { videoFile, thumbnailUrl };
+}
+
 /**
  * Generates a video from a text prompt and an optional image using the Veo3 service.
- * Implements a high-level retry loop to handle token/server failover for the entire
- * multi-step process (Upload -> Generate -> Poll).
+ * Implements a 4-Phase Strategic Retry Loop.
  */
 export const generateVideo = async (
     prompt: string,
@@ -174,174 +344,104 @@ export const generateVideo = async (
     onStatusUpdate?: (status: string) => void
 ): Promise<{ videoFile: File; thumbnailUrl: string | null; }> => {
     
-    // High-level retry loop for the entire video generation workflow
-    const MAX_VIDEO_ATTEMPTS = 3;
+    const currentUserJson = localStorage.getItem('currentUser');
+    let currentToken: string | undefined = undefined;
+    let currentServer: string | undefined = undefined;
+    
+    // Initialize defaults
+    if (currentUserJson) {
+        const u = JSON.parse(currentUserJson);
+        if (u.personalAuthToken) currentToken = u.personalAuthToken;
+    }
+    const sessionServer = sessionStorage.getItem('selectedProxyServer');
+    if (sessionServer) currentServer = sessionServer;
+
     let lastError: any;
+    const usedTokens: string[] = [];
+    if (currentToken) usedTokens.push(currentToken);
 
-    for (let attempt = 1; attempt <= MAX_VIDEO_ATTEMPTS; attempt++) {
-        try {
-            if (attempt > 1) {
-                const retryMsg = `Attempt ${attempt}/${MAX_VIDEO_ATTEMPTS}: Switching server & token...`;
-                if (onStatusUpdate) onStatusUpdate(retryMsg);
-                addLogEntry({ model, prompt, output: retryMsg, tokenCount: 0, status: "Success" });
-                // Small delay to prevent hammering
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
+    // --- PHASE 1: INITIAL ATTEMPT (Current Token, Current Server) ---
+    try {
+        addLogEntry({ model, prompt, output: `Phase 1: Initial Attempt...`, tokenCount: 0, status: "Success" });
+        return await attemptVideoGeneration(prompt, model, aspectRatio, resolution, image, currentToken, currentServer, onStatusUpdate);
+    } catch (e: any) {
+        lastError = e;
+        console.warn(`[Video Gen] Phase 1 Failed: ${e.message}`);
+        if (isSafetyError(e.message)) throw e; // Don't retry safety errors
+    }
 
-            // --- STEP 1: PREPARE IMAGE ---
-            let processedImage = image;
-            // Force crop/resize for ALL images to ensure they meet size and ratio requirements.
-            if (image) {
-                try {
-                    // Cast string to specific union type as we know it's one of the valid ones from UI
-                    const targetRatio = (aspectRatio === '16:9' || aspectRatio === '9:16') ? aspectRatio : '9:16';
-                    
-                    if (attempt === 1) { // Only log cropping once
-                        addLogEntry({ model, prompt: "Processing reference image...", output: `Resizing/Cropping to ${targetRatio}...`, tokenCount: 0, status: "Success" });
-                    }
-                    const croppedBase64 = await cropImageToAspectRatio(image.imageBytes, targetRatio);
-                    processedImage = {
-                        ...image,
-                        imageBytes: croppedBase64,
-                    };
-                } catch (cropError) {
-                    console.error("Image processing failed, proceeding with original image.", cropError);
-                }
-            }
-
-            const veo3AspectRatio = (ar: string): 'landscape' | 'portrait' => {
-                if (ar === '9:16' || ar === '3:4') return 'portrait';
-                return 'landscape';
-            };
-            const aspectRatioForVeo3 = veo3AspectRatio(aspectRatio);
-
-            let imageMediaId: string | undefined = undefined;
-            let successfulToken: string | null = null;
+    // --- PHASE 2: SERVER HOP (Same Token, 3 Different Servers) ---
+    // Only if we have a token to reuse
+    if (currentToken) {
+        for (let i = 1; i <= 3; i++) {
+            const randomServer = getRandomServer();
+            const msg = `Phase 2 (Attempt ${i}/3): Server Hop to ${randomServer.replace('https://', '')}...`;
+            if (onStatusUpdate) onStatusUpdate(msg);
+            addLogEntry({ model, prompt, output: msg, tokenCount: 0, status: "Success" });
             
-            // --- STEP 2: UPLOAD (If needed) ---
-            if (processedImage) {
-                if (onStatusUpdate) onStatusUpdate('Uploading reference image...');
-                // uploadImageForVeo3 uses executeProxiedRequest which RANDOMIZES the pool.
-                // On a retry (attempt > 1), this will likely pick a DIFFERENT token/server.
-                const uploadResult = await uploadImageForVeo3(processedImage.imageBytes, processedImage.mimeType, aspectRatioForVeo3, onStatusUpdate);
-                imageMediaId = uploadResult.mediaId;
-                successfulToken = uploadResult.successfulToken;
+            try {
+                return await attemptVideoGeneration(prompt, model, aspectRatio, resolution, image, currentToken, randomServer, onStatusUpdate);
+            } catch (e: any) {
+                lastError = e;
+                console.warn(`[Video Gen] Phase 2.${i} Failed: ${e.message}`);
+                if (isSafetyError(e.message)) throw e;
             }
-
-            const useStandardModel = !model.includes('fast');
-            
-            if (onStatusUpdate) onStatusUpdate('Initializing generation...');
-            
-            // --- STEP 3: GENERATE REQUEST ---
-            // Pass the captured token (if any) to ensure session consistency with the uploaded image.
-            // If text-only, successfulToken is null, so generateVideoWithVeo3 will randomize the token itself.
-            const { operations: initialOperations, successfulToken: generationToken } = await generateVideoWithVeo3({
-                prompt,
-                imageMediaId,
-                config: {
-                    aspectRatio: aspectRatioForVeo3,
-                    useStandardModel,
-                    authToken: successfulToken || undefined, 
-                },
-            }, onStatusUpdate);
-
-            const videoCreationToken = generationToken;
-
-            if (!videoCreationToken) {
-                throw new Error("Could not determine which auth token was successful for video creation.");
-            }
-
-            if (!initialOperations || initialOperations.length === 0) {
-                throw new Error("Video generation failed to start. The API did not return any operations.");
-            }
-
-            // --- STEP 4: POLL STATUS ---
-            let finalOperations: any[] = initialOperations;
-            let finalUrl: string | null = null;
-            let thumbnailUrl: string | null = null;
-            const POLL_INTERVAL = 10000;
-
-            while (!finalUrl) {
-                await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
-                // if (onStatusUpdate) onStatusUpdate('Checking progress...'); // Keep previous status to avoid flickering
-
-                // Check status using the SAME token that started the generation
-                const statusResponse = await checkVideoStatus(finalOperations, videoCreationToken, onStatusUpdate);
-                if (!statusResponse?.operations || statusResponse.operations.length === 0) {
-                    console.warn('⚠️ Empty status response, retrying...');
-                    continue;
-                }
-
-                finalOperations = statusResponse.operations;
-                const opStatus = finalOperations[0];
-                
-                if (opStatus.status === 'MEDIA_GENERATION_STATUS_FAILED') {
-                    console.error('❌ Video generation status FAILED:', opStatus);
-                    throw new Error("Video generation failed on the server. The prompt might be blocked.");
-                }
-
-                const isCompleted = opStatus.done === true || ['MEDIA_GENERATION_STATUS_COMPLETED', 'MEDIA_GENERATION_STATUS_SUCCESS', 'MEDIA_GENERATION_STATUS_SUCCESSFUL'].includes(opStatus.status);
-
-                if (isCompleted) {
-                    finalUrl = opStatus.operation?.metadata?.video?.fifeUrl
-                            || opStatus.metadata?.video?.fifeUrl
-                            || opStatus.result?.generatedVideo?.[0]?.fifeUrl
-                            || opStatus.result?.generatedVideos?.[0]?.fifeUrl
-                            || opStatus.video?.fifeUrl
-                            || opStatus.fifeUrl;
-                    
-                    thumbnailUrl = opStatus.operation?.metadata?.video?.servingBaseUri
-                                || opStatus.metadata?.video?.servingBaseUri
-                                || null;
-                    
-                    if (!finalUrl) {
-                        throw new Error("Video finished but no output URL found (Safety Block likely).");
-                    }
-                } else if (opStatus.error) {
-                    throw new Error(`Video generation failed: ${opStatus.error.message || opStatus.error.code || 'Unknown error'}`);
-                }
-            }
-            
-            // --- STEP 5: DOWNLOAD ---
-            const PROXY_URL = getVeoProxyUrl();
-            if (onStatusUpdate) onStatusUpdate('Finalizing video...');
-            const proxyDownloadUrl = `${PROXY_URL}/api/veo/download-video?url=${encodeURIComponent(finalUrl)}`;
-
-            const response = await fetch(proxyDownloadUrl);
-            if (!response.ok) {
-                throw new Error(`Background download failed with status: ${response.status}`);
-            }
-            const blob = await response.blob();
-            const videoFile = new File([blob], `monoklix-veo3-${Date.now()}.mp4`, { type: 'video/mp4' });
-
-            return { videoFile, thumbnailUrl };
-
-        } catch (error) {
-            lastError = error;
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            const lowerError = errorMessage.toLowerCase();
-
-            // Detect non-retriable safety errors
-            if (lowerError.includes('safety') || lowerError.includes('blocked') || lowerError.includes('bad request') || lowerError.includes('400')) {
-                console.warn("Safety/400 error detected, stopping retry loop.");
-                addLogEntry({ model, prompt, output: `Generation Blocked: ${errorMessage}`, tokenCount: 0, status: 'Error', error: errorMessage });
-                throw error; // Don't retry for safety violations
-            }
-
-            console.warn(`[Video Gen] Attempt ${attempt} failed: ${errorMessage}`);
-            addLogEntry({ model, prompt, output: `Attempt ${attempt} failed: ${errorMessage}`, tokenCount: 0, status: 'Error', error: errorMessage });
-
-            // If last attempt, throw the error
-            if (attempt === MAX_VIDEO_ATTEMPTS) {
-                throw lastError;
-            }
-            // Otherwise loop continues -> New Token -> New Server
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Cooldown
         }
     }
 
+    // --- PHASE 3: NEW IDENTITY 1 (New Token, 3 Different Servers) ---
+    const newToken1 = getRandomToken(usedTokens);
+    if (newToken1) {
+        usedTokens.push(newToken1);
+        for (let i = 1; i <= 3; i++) {
+            const randomServer = getRandomServer();
+            const msg = `Phase 3 (Attempt ${i}/3): New Token 1 on ${randomServer.replace('https://', '')}...`;
+            if (onStatusUpdate) onStatusUpdate(msg);
+            addLogEntry({ model, prompt, output: msg, tokenCount: 0, status: "Success" });
+
+            try {
+                return await attemptVideoGeneration(prompt, model, aspectRatio, resolution, image, newToken1, randomServer, onStatusUpdate);
+            } catch (e: any) {
+                lastError = e;
+                console.warn(`[Video Gen] Phase 3.${i} Failed: ${e.message}`);
+                if (isSafetyError(e.message)) throw e;
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    } else {
+        addLogEntry({ model, prompt, output: "Phase 3 Skipped: No spare tokens.", tokenCount: 0, status: "Success" });
+    }
+
+    // --- PHASE 4: NEW IDENTITY 2 (Another New Token, 3 Different Servers) ---
+    const newToken2 = getRandomToken(usedTokens);
+    if (newToken2) {
+        usedTokens.push(newToken2);
+        for (let i = 1; i <= 3; i++) {
+            const randomServer = getRandomServer();
+            const msg = `Phase 4 (Attempt ${i}/3): New Token 2 on ${randomServer.replace('https://', '')}...`;
+            if (onStatusUpdate) onStatusUpdate(msg);
+            addLogEntry({ model, prompt, output: msg, tokenCount: 0, status: "Success" });
+
+            try {
+                return await attemptVideoGeneration(prompt, model, aspectRatio, resolution, image, newToken2, randomServer, onStatusUpdate);
+            } catch (e: any) {
+                lastError = e;
+                console.warn(`[Video Gen] Phase 4.${i} Failed: ${e.message}`);
+                if (isSafetyError(e.message)) throw e;
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    }
+
+    // If we get here, everything failed.
     throw lastError;
 };
 
+function isSafetyError(msg: string): boolean {
+    const lower = msg.toLowerCase();
+    return lower.includes('safety') || lower.includes('blocked') || lower.includes('bad request') || msg.includes('[400]');
+}
 
 /**
  * Generates text content from a prompt and one or more images.

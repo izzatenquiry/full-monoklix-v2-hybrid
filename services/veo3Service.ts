@@ -6,6 +6,7 @@ interface Veo3Config {
   aspectRatio: 'landscape' | 'portrait';
   seed?: number;
   useStandardModel?: boolean;
+  serverUrl?: string;
 }
 
 interface VideoGenerationRequest {
@@ -75,7 +76,8 @@ export const generateVideoWithVeo3 = async (
     requestBody,
     logContext,
     config.authToken, 
-    onStatusUpdate
+    onStatusUpdate,
+    config.serverUrl // Pass specific server URL if provided
   );
   console.log('🎬 [VEO Service] Received operations from API client:', data.operations?.length || 0);
   return { operations: data.operations || [], successfulToken };
@@ -111,7 +113,9 @@ export const uploadImageForVeo3 = async (
   base64Image: string,
   mimeType: string,
   aspectRatio: 'landscape' | 'portrait',
-  onStatusUpdate?: (status: string) => void
+  onStatusUpdate?: (status: string) => void,
+  authToken?: string, // New optional parameter to force a specific token
+  serverUrl?: string  // New optional parameter to force a specific server
 ): Promise<{ mediaId: string; successfulToken: string }> => {
   console.log(`📤 [VEO Service] Preparing to upload image for VEO. MimeType: ${mimeType}`);
   const imageAspectRatioEnum = aspectRatio === 'landscape' 
@@ -136,8 +140,9 @@ export const uploadImageForVeo3 = async (
     'veo',
     requestBody,
     'VEO UPLOAD',
-    undefined, // Let it use the robust logic to find a working token initially
-    onStatusUpdate
+    authToken, // Use specific token if provided, otherwise null for auto-selection
+    onStatusUpdate,
+    serverUrl // Use specific server if provided
   );
 
   const mediaId = data.mediaGenerationId?.mediaGenerationId || data.mediaId;
