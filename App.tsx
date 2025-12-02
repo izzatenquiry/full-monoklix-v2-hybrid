@@ -972,7 +972,7 @@ const App: React.FC = () => {
       />
       <main className="flex-1 flex flex-col overflow-y-auto min-w-0 relative">
         {/* Sticky Header Wrapper - Enhanced for Mobile */}
-        <div className="sticky top-0 z-30 w-full bg-white dark:bg-neutral-950 shadow-sm">
+        <div className="sticky top-0 z-50 w-full bg-white dark:bg-neutral-950 shadow-sm">
             <header className="flex items-center justify-between p-2 border-b border-neutral-200 dark:border-neutral-800">
               <div className="flex items-center gap-2">
                 <button onClick={() => setIsSidebarOpen(true)} className="p-2 lg:hidden" aria-label={T.openMenu}>
