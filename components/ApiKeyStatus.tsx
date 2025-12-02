@@ -167,7 +167,6 @@ const TokenSelectionModal: React.FC<TokenSelectionModalProps> = ({ isOpen, onClo
                                             <span className="text-[10px] text-neutral-400 font-mono whitespace-nowrap border-l border-neutral-300 dark:border-neutral-600 pl-2">
                                                 {new Date(t.createdAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}
                                             </span>
-                                            {isCurrent && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold whitespace-nowrap">CURRENT</span>}
                                         </div>
                                         <div className="flex gap-2 shrink-0">
                                             <button 
@@ -180,11 +179,14 @@ const TokenSelectionModal: React.FC<TokenSelectionModalProps> = ({ isOpen, onClo
                                             <button 
                                                 onClick={() => handleClaimToken(t.token)}
                                                 disabled={isCurrent || claimingToken !== null || (status !== 'idle' && !isClaimable)} 
-                                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-white flex items-center justify-center gap-1.5 min-w-[80px] ${isCurrent ? 'bg-green-600 opacity-100 shadow-md' : isClaimable ? 'bg-green-600 hover:bg-green-700 shadow-md hover:scale-105' : 'bg-neutral-400 hover:bg-neutral-500'}`}
+                                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors text-white flex items-center justify-center gap-1.5 min-w-[80px] ${isCurrent ? 'bg-green-600 opacity-100 shadow-md cursor-default' : isClaimable ? 'bg-green-600 hover:bg-green-700 shadow-md hover:scale-105' : 'bg-neutral-400 hover:bg-neutral-500'}`}
                                                 title={!isClaimable && status !== 'idle' ? "Token failed validation" : "Claim this token"}
                                             >
                                                 {isCurrent ? (
-                                                    <CheckCircleIcon className="w-4 h-4 text-white" />
+                                                    <>
+                                                        <CheckCircleIcon className="w-4 h-4 text-white" />
+                                                        <span>Active</span>
+                                                    </>
                                                 ) : claimingToken === t.token ? (
                                                     <Spinner/> 
                                                 ) : (

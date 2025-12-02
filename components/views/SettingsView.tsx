@@ -23,7 +23,7 @@ const getTabs = (): Tab<SettingsTabId>[] => {
     const T = getTranslations().settingsView;
     return [
         { id: 'profile', label: T.tabs.profile },
-        { id: 'api', label: T.tabs.api, adminOnly: true },
+        { id: 'api', label: T.tabs.api },
         { id: 'content-admin', label: T.tabs.contentAdmin, adminOnly: true },
         { id: 'user-db', label: T.tabs.userDb, adminOnly: true },
     ];
@@ -361,9 +361,7 @@ const ApiIntegrationsPanel: React.FC<ApiIntegrationsPanelProps> = ({ currentUser
     }, []);
 
     const handleClaimSharedToken = useCallback(async (token: string) => {
-        if (!confirm(T.confirmClaim.replace('{token}', token.slice(-6)))) {
-            return;
-        }
+        // REMOVED CONFIRMATION DIALOG FOR FASTER UX
         setClaimingToken(token);
         setTokenStatusMessage({ type: 'loading', message: T.claiming.replace('{token}', token.slice(-6)) });
 
@@ -591,7 +589,6 @@ const ApiIntegrationsPanel: React.FC<ApiIntegrationsPanelProps> = ({ currentUser
                                             <span className="text-[10px] text-neutral-400 font-mono border-l border-neutral-300 dark:border-neutral-600 pl-2 whitespace-nowrap">
                                                 {new Date(tokenData.createdAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}
                                             </span>
-                                            {isCurrentToken && <span className="text-[10px] font-bold text-green-600 dark:text-green-400 flex items-center gap-1 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full"><CheckCircleIcon className="w-3 h-3"/> Active</span>}
                                         </div>
                                     </div>
                                 </div>
@@ -611,12 +608,25 @@ const ApiIntegrationsPanel: React.FC<ApiIntegrationsPanelProps> = ({ currentUser
                                             {isBeingTested ? <Spinner /> : T.test}
                                         </button>
                                         <div className="w-px h-3 bg-neutral-300 dark:bg-neutral-600 mx-0.5"></div>
-                                        <button 
-                                            onClick={() => handleClaimSharedToken(tokenData.token)} 
-                                            disabled={isBeingClaimed || isCurrentToken} 
-                                            className="px-3 h-full text-[10px] font-bold text-primary-600 dark:text-primary-400 hover:bg-white dark:hover:bg-neutral-700 rounded-md transition-colors disabled:opacity-50 disabled:text-neutral-400"
+                                        <button
+                                            onClick={() => handleClaimSharedToken(tokenData.token)}
+                                            disabled={isBeingClaimed || isCurrentToken}
+                                            className={`px-3 h-full text-[10px] font-bold rounded-md transition-colors flex items-center gap-1 ${
+                                                isCurrentToken
+                                                ? 'bg-green-600 text-white shadow-sm opacity-100 cursor-default'
+                                                : 'bg-white dark:bg-neutral-700 text-primary-600 dark:text-primary-400 hover:bg-neutral-50 dark:hover:bg-neutral-600 shadow-sm disabled:opacity-50 disabled:text-neutral-400 disabled:shadow-none'
+                                            }`}
                                         >
-                                            {isBeingClaimed ? <Spinner /> : isCurrentToken ? T.claimed : T.claim}
+                                            {isBeingClaimed ? (
+                                                <Spinner />
+                                            ) : isCurrentToken ? (
+                                                <>
+                                                    <CheckCircleIcon className="w-3 h-3 text-white" />
+                                                    Active
+                                                </>
+                                            ) : (
+                                                T.claim
+                                            )}
                                         </button>
                                     </div>
                                 </div>

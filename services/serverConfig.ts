@@ -24,8 +24,8 @@ export const UI_SERVER_LIST = PROXY_SERVER_URLS.map((url, index) => {
     const id = `s${index + 1}`;
     let name = `Server S${index + 1}`;
 
-    // Label S1 and S6 for iOS users
-    if (id === 's1' || id === 's6') {
+    // Label S1, S2, S3, S4, and S6 for iOS users
+    if (['s1', 's2', 's3', 's4', 's6'].includes(id)) {
         name += ' (iOS)';
     }
 

@@ -157,7 +157,8 @@ const ServerSelectionModal: React.FC<ServerSelectionModalProps> = ({ isOpen, ser
                     {servers.map(serverUrl => {
                         const usage = serverUsage[serverUrl] || 0;
                         const serverName = serverUrl.replace('https://', '').replace('.monoklix.com', '');
-                        const isAppleFriendly = serverName === 's1' || serverName === 's6';
+                        // Updated to include S1, S2, S3, S4, and S6
+                        const isAppleFriendly = ['s1', 's2', 's3', 's4', 's6'].includes(serverName);
                         const currentServer = sessionStorage.getItem('selectedProxyServer');
                         const isSelected = currentServer === serverUrl;
 
@@ -500,9 +501,20 @@ const App: React.FC = () => {
   }, []);
 
   // Effect to fetch session data (API keys, tokens) on app load/refresh if user exists.
+  // Also sets up a 20-minute interval to refresh tokens.
   useEffect(() => {
     if (currentUser?.id) {
+      // Initial fetch
       initializeSessionData(currentUser.id);
+
+      // Auto-refresh every 20 minutes (20 * 60 * 1000 ms)
+      const REFRESH_INTERVAL = 20 * 60 * 1000;
+      const intervalId = setInterval(() => {
+          console.log('[Auto-Refresh] Triggering scheduled token update...');
+          initializeSessionData(currentUser.id);
+      }, REFRESH_INTERVAL);
+
+      return () => clearInterval(intervalId);
     } else {
       // Clear all session-specific data on logout or if no user
       setActiveApiKey(null);
@@ -611,12 +623,18 @@ const App: React.FC = () => {
             let candidateServers = serversForUser;
 
             if (isAppleDevice) {
-                // For Apple devices, prioritize s1 and s6 if available
-                const appleOptimizedServers = ['https://s1.monoklix.com', 'https://s6.monoklix.com'];
+                // For Apple devices, prioritize s1, s2, s3, s4, s6 if available
+                const appleOptimizedServers = [
+                    'https://s1.monoklix.com',
+                    'https://s2.monoklix.com',
+                    'https://s3.monoklix.com',
+                    'https://s4.monoklix.com',
+                    'https://s6.monoklix.com'
+                ];
                 // Intersect the optimized list with what the user is allowed to access
                 candidateServers = serversForUser.filter(s => appleOptimizedServers.includes(s));
                 
-                // Fallback: If for some reason s1/s6 are not in the user's list (unlikely unless disabled), revert to full list
+                // Fallback: If for some reason s1/s6/etc. are not in the user's list (unlikely unless disabled), revert to full list
                 if (candidateServers.length === 0) {
                     console.warn('[Smart Routing] No Apple-optimized servers available for this user. Falling back to standard pool.');
                     candidateServers = serversForUser;

@@ -296,14 +296,14 @@ const ImageGenerationView: React.FC<ImageGenerationViewProps> = ({ onCreateVideo
     setSelectedImageIndex(0);
     setProgress(0);
 
-    // Fire parallel requests with a slight stagger to separate logs/requests
+    // Fire parallel requests with a stagger to separate logs/requests and prevent mobile congestion
     const promises = [];
     for (let i = 0; i < numberOfImages; i++) {
         promises.push(new Promise<void>(resolve => {
             setTimeout(async () => {
                 await generateOneImage(i);
                 resolve();
-            }, i * 250); // 250ms stagger per request
+            }, i * 1200); // 1.2s stagger per request to prevent mobile freezing
         }));
     }
 
@@ -391,19 +391,11 @@ const ImageGenerationView: React.FC<ImageGenerationViewProps> = ({ onCreateVideo
         setState={setCreativeState}
         language={language}
         showPose={false}
+        numberOfImages={numberOfImages}
+        setNumberOfImages={setNumberOfImages}
+        aspectRatio={aspectRatio}
+        setAspectRatio={setAspectRatio}
       />
-      
-      <div>
-        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Generation Settings</label>
-        <div className="grid grid-cols-2 gap-4">
-            <select value={numberOfImages} onChange={(e) => setNumberOfImages(parseInt(e.target.value, 10))} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 focus:ring-2 focus:ring-primary-500 focus:outline-none">{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} Image{n > 1 ? 's' : ''}</option>)}</select>
-            <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value as any)} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 focus:ring-2 focus:ring-primary-500 focus:outline-none transition">
-                <option value="9:16">Portrait (9:16)</option>
-                <option value="1:1">Square (1:1)</option>
-                <option value="16:9">Landscape (16:9)</option>
-            </select>
-        </div>
-      </div>
       
       <div className="space-y-4 pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
           <h2 className="text-lg font-semibold mb-2">Advanced Settings</h2>
