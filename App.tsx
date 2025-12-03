@@ -124,7 +124,7 @@ const ServerSelectionModal: React.FC<ServerSelectionModalProps> = ({ isOpen, ser
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-zoomIn" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-zoomIn" onClick={onClose}>
             <div className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl p-6 relative border border-neutral-200 dark:border-neutral-800 flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
                 <button 
                     onClick={onClose} 
@@ -581,28 +581,8 @@ const App: React.FC = () => {
         };
     }, [currentUser?.id, handleLogout, T.sessionTerminated]);
     
-    // Effect for 1-hour session timeout
-    useEffect(() => {
-        let sessionTimeoutId: number;
-
-        if (currentUser) {
-            const ONE_HOUR_IN_MS = 60 * 60 * 1000;
-            // Removed verbose console log for starting timer
-            
-            sessionTimeoutId = window.setTimeout(() => {
-                console.log('[Session] 1-hour session expired. Forcing logout.');
-                handleLogout();
-            }, ONE_HOUR_IN_MS);
-        }
-
-        // Cleanup function to clear the timer if the user logs out manually or component unmounts
-        return () => {
-            if (sessionTimeoutId) {
-                clearTimeout(sessionTimeoutId);
-                // Removed verbose console log for clearing timer
-            }
-        };
-    }, [currentUser, handleLogout]);
+    // REMOVED: 1-hour strict session timeout to prevent page reloads during long operations.
+    // The session will persist until the user closes the tab or manually logs out.
 
   const proceedWithPostLoginFlow = (user: User) => {
     // Directly let user in without blocking modal.
@@ -874,16 +854,6 @@ const App: React.FC = () => {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
 
-  if (showServerModal) {
-    return <ServerSelectionModal
-        isOpen={true}
-        servers={serverOptions.servers}
-        serverUsage={serverOptions.usage}
-        onSelect={handleServerSelected}
-        onClose={() => setShowServerModal(false)}
-    />;
-  }
-
   // --- Access Control Logic for Full Version ---
   let isBlocked = false;
   let blockMessage = { title: T.accessDenied, body: "" };
@@ -1046,6 +1016,16 @@ const App: React.FC = () => {
         isOpen={isLogSidebarOpen}
         onClose={() => setIsLogSidebarOpen(false)}
       />
+      {/* Render ServerSelectionModal as an overlay if visible */}
+      {showServerModal && (
+        <ServerSelectionModal
+            isOpen={true}
+            servers={serverOptions.servers}
+            serverUsage={serverOptions.usage}
+            onSelect={handleServerSelected}
+            onClose={() => setShowServerModal(false)}
+        />
+      )}
     </div>
   );
 };
