@@ -39,7 +39,7 @@ export const uploadImageForImagen = async (
     authToken?: string, 
     onStatusUpdate?: (status: string) => void,
     serverUrl?: string // New optional param
-): Promise<{ mediaId: string; successfulToken: string }> => {
+): Promise<{ mediaId: string; successfulToken: string; successfulServerUrl: string }> => {
   console.log(`📤 [Imagen Service] Preparing to upload image for Imagen. MimeType: ${mimeType}`);
   const requestBody = {
     clientContext: { 
@@ -52,7 +52,7 @@ export const uploadImageForImagen = async (
   };
 
   // We use the robust executeProxiedRequest which handles token rotation
-  const { data, successfulToken } = await executeProxiedRequest(
+  const { data, successfulToken, successfulServerUrl } = await executeProxiedRequest(
     '/upload',
     'imagen',
     requestBody, 
@@ -73,7 +73,7 @@ export const uploadImageForImagen = async (
   }
   console.log(`📤 [Imagen Service] Image upload successful. Media ID: ${mediaId} using token ...${successfulToken.slice(-6)}`);
   
-  return { mediaId, successfulToken };
+  return { mediaId, successfulToken, successfulServerUrl };
 };
 
 
@@ -166,6 +166,7 @@ export const editOrComposeWithImagen = async (request: {
     
     const uploadedMedia = [];
     let consistentToken: string | undefined = request.config.authToken;
+    let consistentServer: string | undefined = request.config.serverUrl;
 
     for (let i = 0; i < request.images.length; i++) {
         const img = request.images[i];
@@ -181,24 +182,19 @@ export const editOrComposeWithImagen = async (request: {
         }
 
         // Use consistentToken if we have one from a previous successful upload in this loop
-        const { mediaId, successfulToken } = await uploadImageForImagen(
+        const { mediaId, successfulToken, successfulServerUrl } = await uploadImageForImagen(
             processedBase64, 
             img.mimeType, 
             consistentToken, 
             onStatusUpdate,
-            request.config.serverUrl // Pass the override server URL to the upload function
+            consistentServer // Pass the override server URL to the upload function
         );
         
-        // Lock in this token for the rest of the process
+        // Lock in this token/server for the rest of the process
         if (!consistentToken) {
             consistentToken = successfulToken;
-            console.log(`🔒 [Imagen Service] Locked token for session: ...${consistentToken.slice(-6)}`);
-        } else if (consistentToken !== successfulToken) {
-             // This theoretically shouldn't happen if we pass specificToken, 
-             // but if it does, we have a problem because media IDs are split across tokens.
-             console.warn(`⚠️ [Imagen Service] Token mismatch detected! Upload 1: ...${consistentToken.slice(-6)}, Upload ${i+1}: ...${successfulToken.slice(-6)}`);
-             // We might need to re-upload previous ones or fail, but let's proceed for now.
-             // In strict mode (specificToken passed), rotation shouldn't happen.
+            consistentServer = successfulServerUrl;
+            console.log(`🔒 [Imagen Service] Locked token: ...${consistentToken.slice(-6)} | Server: ${consistentServer}`);
         }
 
         uploadedMedia.push({
@@ -215,7 +211,8 @@ export const editOrComposeWithImagen = async (request: {
         recipeMediaInputs: uploadedMedia,
         config: {
             ...request.config,
-            authToken: consistentToken // Force use of the token that owns the media IDs
+            authToken: consistentToken, // Force use of the token that owns the media IDs
+            serverUrl: consistentServer // Force use of the server that has the media IDs
         }
     }, onStatusUpdate);
     

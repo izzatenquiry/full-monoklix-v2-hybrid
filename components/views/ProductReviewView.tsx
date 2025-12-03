@@ -114,7 +114,7 @@ const ProductReviewView: React.FC<ProductReviewViewProps> = ({ onReEdit, onCreat
   // New video generation settings state
   const videoModel = MODELS.videoGenerationDefault;
   const [videoAspectRatio, setVideoAspectRatio] = useState('9:16');
-  const [videoResolution, setVideoResolution] = useState('1080p');
+  const [videoResolution, setVideoResolution] = useState('720p');
   const [videoLanguage, setVideoLanguage] = useState<string>("English");
   
   // New audio settings state

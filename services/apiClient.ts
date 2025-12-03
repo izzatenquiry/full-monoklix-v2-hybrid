@@ -96,7 +96,7 @@ export const executeProxiedRequest = async (
   specificToken?: string,
   onStatusUpdate?: (status: string) => void,
   overrideServerUrl?: string // New parameter to force a specific server
-): Promise<{ data: any; successfulToken: string }> => {
+): Promise<{ data: any; successfulToken: string; successfulServerUrl: string }> => {
   const isStatusCheck = logContext === 'VEO STATUS';
   
   if (!isStatusCheck) {
@@ -225,7 +225,7 @@ export const executeProxiedRequest = async (
           if (!isStatusCheck) {
               console.log(`✅ [API Client] Success using ${attempt.source} token on ${attempt.serverUrl}`);
           }
-          return { data, successfulToken: attempt.token };
+          return { data, successfulToken: attempt.token, successfulServerUrl: attempt.serverUrl };
 
       } catch (error) {
           lastError = error;

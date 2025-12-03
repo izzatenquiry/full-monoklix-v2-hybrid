@@ -206,12 +206,15 @@ const attemptVideoGeneration = async (
     onStatusUpdate?: (status: string) => void
 ): Promise<{ videoFile: File; thumbnailUrl: string | null; }> => {
 
+    let successfulServerUrl: string | undefined = serverUrl;
+    let successfulToken: string | null = null;
+    let imageMediaId: string | undefined = undefined;
+
     // --- STEP 1: PREPARE IMAGE ---
     let processedImage = image;
     if (image) {
         try {
             const targetRatio = (aspectRatio === '16:9' || aspectRatio === '9:16') ? aspectRatio : '9:16';
-            // Note: Logging cropping only if verbose needed, kept silent here for clean retry logs
             const croppedBase64 = await cropImageToAspectRatio(image.imageBytes, targetRatio);
             processedImage = { ...image, imageBytes: croppedBase64 };
         } catch (cropError) {
@@ -224,15 +227,12 @@ const attemptVideoGeneration = async (
         return 'landscape';
     };
     const aspectRatioForVeo3 = veo3AspectRatio(aspectRatio);
-
-    let imageMediaId: string | undefined = undefined;
-    let successfulToken: string | null = null;
     
     // --- STEP 2: UPLOAD (If needed) ---
     if (processedImage) {
         if (onStatusUpdate) onStatusUpdate('Uploading reference image...');
         
-        // STRICTLY use the provided token and server
+        // We upload using the provided token (or random) and server (or random)
         const uploadResult = await uploadImageForVeo3(
             processedImage.imageBytes, 
             processedImage.mimeType, 
@@ -241,28 +241,34 @@ const attemptVideoGeneration = async (
             token,
             serverUrl
         );
+        
+        // CAPTURE EVERYTHING
         imageMediaId = uploadResult.mediaId;
         successfulToken = uploadResult.successfulToken;
+        successfulServerUrl = uploadResult.successfulServerUrl; // Crucial: The actual server used
     } else {
         successfulToken = token || null;
+        // successfulServerUrl remains as input or undefined
     }
 
     const useStandardModel = !model.includes('fast');
     if (onStatusUpdate) onStatusUpdate('Initializing generation...');
     
     // --- STEP 3: GENERATE REQUEST ---
-    // STRICTLY use the token from upload (or provided) and the provided server
-    const { operations: initialOperations, successfulToken: generationToken } = await generateVideoWithVeo3({
+    // CRITICAL: Force use of the SAME server and SAME token that was used for upload (if applicable)
+    const { operations: initialOperations, successfulToken: generationToken, successfulServerUrl: genServerUrl } = await generateVideoWithVeo3({
         prompt,
         imageMediaId,
         config: {
             aspectRatio: aspectRatioForVeo3,
             useStandardModel,
             authToken: successfulToken || undefined, 
-            serverUrl: serverUrl
+            serverUrl: successfulServerUrl // Enforce consistency
         },
     }, onStatusUpdate);
 
+    // If this was T2V (no upload), we now lock the server for the checking phase
+    successfulServerUrl = genServerUrl;
     const videoCreationToken = generationToken;
 
     if (!initialOperations || initialOperations.length === 0) {
@@ -278,8 +284,19 @@ const attemptVideoGeneration = async (
     while (!finalUrl) {
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
 
-        // Check status using the SAME token that started the generation
-        const statusResponse = await checkVideoStatus(finalOperations, videoCreationToken, onStatusUpdate);
+        // Check status using the SAME token AND SAME server
+        if (!successfulServerUrl) {
+             // Should never happen if logic above is correct, but safety check
+             throw new Error("Lost connection context (Server URL missing) during polling.");
+        }
+
+        const statusResponse = await checkVideoStatus(
+            finalOperations, 
+            videoCreationToken, 
+            onStatusUpdate, 
+            successfulServerUrl
+        );
+
         if (!statusResponse?.operations || statusResponse.operations.length === 0) {
             console.warn('⚠️ Empty status response, retrying...');
             continue;
@@ -315,8 +332,7 @@ const attemptVideoGeneration = async (
     }
     
     // --- STEP 5: DOWNLOAD ---
-    // We use the *same* server for download proxying to maintain session stickiness if needed (though download is usually just CORS proxy)
-    const PROXY_URL = serverUrl || getVeoProxyUrl(); 
+    const PROXY_URL = successfulServerUrl; 
     if (onStatusUpdate) onStatusUpdate('Finalizing video...');
     const proxyDownloadUrl = `${PROXY_URL}/api/veo/download-video?url=${encodeURIComponent(finalUrl)}`;
 

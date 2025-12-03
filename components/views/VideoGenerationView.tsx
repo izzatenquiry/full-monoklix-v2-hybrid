@@ -82,7 +82,7 @@ const VideoGenerationView: React.FC<VideoGenerationViewProps> = ({ preset, clear
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [referenceImage, setReferenceImage] = useState<ImageData | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [resolution, setResolution] = useState("1080p");
+  const [resolution, setResolution] = useState("720p");
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [imageUploadKey, setImageUploadKey] = useState(Date.now());
 

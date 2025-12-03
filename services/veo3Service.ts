@@ -19,7 +19,7 @@ export const generateVideoWithVeo3 = async (
     request: VideoGenerationRequest,
     onStatusUpdate?: (status: string) => void,
     isHealthCheck = false
-): Promise<{ operations: any[]; successfulToken: string }> => {
+): Promise<{ operations: any[]; successfulToken: string; successfulServerUrl: string }> => {
   console.log('🎬 [VEO Service] Preparing generateVideoWithVeo3 request...');
   const { prompt, imageMediaId, config } = request;
   const isImageToVideo = !!imageMediaId;
@@ -70,7 +70,7 @@ export const generateVideoWithVeo3 = async (
   
   // If this is an I2V request, we MUST use the token that was used to upload the image (config.authToken).
   // executeProxiedRequest handles this via the `specificToken` param.
-  const { data, successfulToken } = await executeProxiedRequest(
+  const { data, successfulToken, successfulServerUrl } = await executeProxiedRequest(
     relativePath,
     'veo',
     requestBody,
@@ -80,10 +80,15 @@ export const generateVideoWithVeo3 = async (
     config.serverUrl // Pass specific server URL if provided
   );
   console.log('🎬 [VEO Service] Received operations from API client:', data.operations?.length || 0);
-  return { operations: data.operations || [], successfulToken };
+  return { operations: data.operations || [], successfulToken, successfulServerUrl };
 };
 
-export const checkVideoStatus = async (operations: any[], token: string, onStatusUpdate?: (status: string) => void) => {
+export const checkVideoStatus = async (
+    operations: any[], 
+    token: string, 
+    onStatusUpdate?: (status: string) => void,
+    serverUrl?: string
+) => {
   const payload = { operations };
 
   const { data } = await executeProxiedRequest(
@@ -92,7 +97,8 @@ export const checkVideoStatus = async (operations: any[], token: string, onStatu
     payload,
     'VEO STATUS',
     token, // Must use same token as generation
-    onStatusUpdate
+    onStatusUpdate,
+    serverUrl // Must use same server as generation
   );
   
   if (data.operations && data.operations.length > 0) {
@@ -116,7 +122,7 @@ export const uploadImageForVeo3 = async (
   onStatusUpdate?: (status: string) => void,
   authToken?: string, // New optional parameter to force a specific token
   serverUrl?: string  // New optional parameter to force a specific server
-): Promise<{ mediaId: string; successfulToken: string }> => {
+): Promise<{ mediaId: string; successfulToken: string; successfulServerUrl: string }> => {
   console.log(`📤 [VEO Service] Preparing to upload image for VEO. MimeType: ${mimeType}`);
   const imageAspectRatioEnum = aspectRatio === 'landscape' 
     ? 'IMAGE_ASPECT_RATIO_LANDSCAPE' 
@@ -135,7 +141,7 @@ export const uploadImageForVeo3 = async (
     }
   };
 
-  const { data, successfulToken } = await executeProxiedRequest(
+  const { data, successfulToken, successfulServerUrl } = await executeProxiedRequest(
     '/upload',
     'veo',
     requestBody,
@@ -153,5 +159,5 @@ export const uploadImageForVeo3 = async (
   }
   
   console.log(`📤 [VEO Service] Image upload successful. Media ID: ${mediaId} with token ...${successfulToken.slice(-6)}`);
-  return { mediaId, successfulToken };
+  return { mediaId, successfulToken, successfulServerUrl };
 };
